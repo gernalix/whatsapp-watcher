@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "WhatsApp Read Watcher",
+  "version": "0.1.0",
+  "description": "Notify when the latest outgoing message in a selected WhatsApp Web chat becomes read.",
+  "permissions": [
+    "notifications",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://web.whatsapp.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://web.whatsapp.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "WhatsApp Read Watcher"
+  },
+  "icons": {
+    "16": "icon.svg",
+    "48": "icon.svg",
+    "128": "icon.svg"
+  }
+}
