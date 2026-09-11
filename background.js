@@ -12,7 +12,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     notificationId,
     {
       type: "basic",
-      iconUrl: "icon.svg",
+      iconUrl: "icon128.png",
       title: "WhatsApp — messaggio letto",
       message: `Il tuo ultimo messaggio in “${chat}” è stato letto.`,
       priority: 1
