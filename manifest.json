@@ -28,8 +28,8 @@
     "default_title": "WhatsApp Read Watcher"
   },
   "icons": {
-    "16": "icon.svg",
-    "48": "icon.svg",
-    "128": "icon.svg"
+    "16": "icon128.png",
+    "48": "icon128.png",
+    "128": "icon128.png"
   }
 }
