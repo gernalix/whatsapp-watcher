@@ -71,4 +71,4 @@ No network requests are added by this extension. The only persisted values are t
 - `manifest.json` — Manifest V3 configuration.
 - `content.js` — WhatsApp DOM watcher and compact control panel.
 - `background.js` — desktop notification bridge.
-- `icon.svg` — local notification icon.
+- `icon128.png` — local extension/notification icon.
