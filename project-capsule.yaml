@@ -1,0 +1,113 @@
+schema_version: c2.project-capsule.v1
+identity:
+  project_id: 93
+  slug: whatsapp-watcher
+  repository_id: R0093
+scope:
+  purpose: Watch whether the latest outgoing message in one user-selected WhatsApp Web chat becomes read and show a local desktop notification.
+  boundaries:
+    - MegaVault owns canonical project identity and repository location; C2 owns work-item lifecycle.
+    - WhatsApp Web and Chrome/Chromium storage and notifications are external browser services.
+    - The extension does not send WhatsApp content or metadata to external servers.
+repository:
+  canonical_workdir: /home/daniele/projects/whatsapp-watcher
+  branch_policy: Canonical repository follows origin/main; make changes in isolated repo-task worktrees and integrate through the guarded single-writer lane.
+architecture:
+  summary: A Manifest V3 content script reads visible WhatsApp Web DOM status markers for one armed chat, persists bounded state in chrome.storage.local, and asks the background service worker to display a desktop notification.
+  entrypoints:
+    - manifest.json
+    - content.js
+    - background.js
+  important_paths:
+    - manifest.json
+    - content.js
+    - background.js
+    - README.md
+dependencies:
+  - name: Chrome or Chromium
+    purpose: Host the extension content script, background service worker, local storage, and desktop notification APIs.
+  - name: WhatsApp Web
+    purpose: Rendered DOM source of outgoing-message read state for the user-selected chat.
+data:
+  schema: Browser extension local storage key whatsappWatcherState contains armed state, selected chat label, current message identifier or fingerprint, last observed read state, and notification deduplication key. No server-side database exists.
+  migrations: No migration framework; extension state is local and initialized with defaults by content.js.
+runtime:
+  services:
+    - Chrome/Chromium Manifest V3 background service worker declared in manifest.json; MegaVault records no OS systemd service for this project.
+  timers: []
+  containers: []
+devices: []
+commands:
+  setup:
+    not_applicable: Install the unpacked extension through Chrome/Chromium Developer mode; this repository has no setup script or package installer.
+  build:
+    not_applicable: The extension is plain JavaScript and a Manifest V3 JSON file; there is no build system.
+  test_targeted:
+    argv: [node, --check, content.js]
+    cwd: .
+  test_full:
+    argv:
+      - python3
+      - -c
+      - "import json,subprocess; subprocess.run(['node','--check','content.js'],check=True); subprocess.run(['node','--check','background.js'],check=True); json.load(open('manifest.json',encoding='utf-8'))"
+    cwd: .
+  lint:
+    argv: [git, diff, --check]
+    cwd: .
+  deploy_install:
+    not_applicable: Load the unpacked extension manually in Chrome/Chromium Developer mode; there is no privileged or automated installer.
+  smoke:
+    not_applicable: A live smoke test requires a user-controlled WhatsApp Web session and chat; source validation must not access it.
+  verify:
+    fast:
+      argv: [python3, /home/daniele/projects/codex-roadmap/tools/project_capsule.py, --repo, ., --mode, FAST]
+      cwd: .
+    full:
+      argv: [python3, /home/daniele/projects/codex-roadmap/tools/project_capsule.py, --repo, ., --mode, FULL]
+      cwd: .
+safety:
+  invariants:
+    - Host permissions and content scripts remain restricted to https://web.whatsapp.com/*.
+    - Read state only from the DOM already rendered by WhatsApp Web; do not use private stores, WebSocket interception, or account APIs.
+    - Never transmit chat labels, message identifiers, content, or read state to an external server.
+    - Persist only bounded chat/message tracking state in browser-local extension storage.
+  risky_operations:
+    - Loading the extension into a real browser enables DOM observation on WhatsApp Web; user action in the extension panel selects and arms one chat.
+    - Browser storage and desktop notifications change local browser/desktop state; validate source without using a real chat or profile.
+  recovery:
+    - Click Stop in the watcher panel to disarm the selected chat; disabling or removing the extension stops its content script.
+    - Browser-local watcher state can be cleared through the browser's extension storage controls.
+acceptance:
+  - Capsule FAST and FULL validators pass against the reviewed integrated repository head.
+  - JavaScript syntax and manifest JSON validate without opening WhatsApp Web or accessing chat data.
+  - No network behavior or private WhatsApp APIs are introduced.
+references:
+  megavault: /home/daniele/MegaVault/megavault.sqlite
+  c2: /home/daniele/projects/codex-roadmap/roadmap.sqlite
+freshness:
+  reviewed_commit: b6e3e9f066456b9e344d0ec7f691679a8c639eeb
+  watch_paths:
+    - manifest.json
+    - content.js
+    - background.js
+    - README.md
+artifacts:
+  agents: AGENTS.md
+validation_hooks:
+  - id: content-script-syntax
+    argv: [node, --check, content.js]
+    cwd: .
+    safe: true
+  - id: background-worker-syntax
+    argv: [node, --check, background.js]
+    cwd: .
+    safe: true
+  - id: manifest-json-parse
+    argv: [python3, -m, json.tool, manifest.json]
+    cwd: .
+    safe: true
+change_verification:
+  - paths: [content.js]
+    commands: [test_targeted]
+  - paths: [background.js, manifest.json, README.md, AGENTS.md, project-capsule.yaml]
+    commands: [test_full]
