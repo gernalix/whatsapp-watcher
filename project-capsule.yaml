@@ -19,7 +19,10 @@ repository:
 architecture:
   summary: A Manifest V3 content script reads visible WhatsApp Web DOM status markers
     for one armed chat, persists bounded state in chrome.storage.local, and asks the
-    background service worker to display a desktop notification.
+    background service worker to display a desktop notification. read-policy.js owns
+    pure marker/label/color classification and stable fingerprints, loaded first by
+    the manifest; content.js retains DOM observation, UI, storage and notification
+    orchestration.
   entrypoints:
   - manifest.json
   - content.js
@@ -29,6 +32,8 @@ architecture:
   - content.js
   - background.js
   - README.md
+  - read-policy.js
+  - tests
 dependencies:
 - name: Chrome or Chromium
   purpose: Host the extension content script, background service worker, local storage,
@@ -63,7 +68,7 @@ commands:
     - content.js
     cwd: .
   test_full:
-    argv:
+    argv: &id001
     - bwrap
     - --die-with-parent
     - --unshare-net
@@ -113,8 +118,9 @@ commands:
     - '1'
     - /bin/bash
     - -c
-    - set -euo pipefail; node --check content.js; node --check background.js; python3
-      -B -m json.tool manifest.json > /dev/null
+    - set -euo pipefail; node --test tests/read-policy.test.cjs; node --check read-policy.js;
+      node --check content.js; node --check background.js; python3 -B -m json.tool
+      manifest.json > /dev/null
     cwd: .
   lint:
     argv:
@@ -171,77 +177,29 @@ acceptance:
 - JavaScript syntax and manifest JSON validate without opening WhatsApp Web or accessing
   chat data.
 - No network behavior or private WhatsApp APIs are introduced.
-- There is no functional automated browser suite; syntax/manifest gates do not prove
-  real read-state detection or notification delivery.
+- Offline policy fixtures verify supplied marker/label/color values and packaged load
+  order; real DOM recognition and notification delivery still require separately scoped
+  browser acceptance.
 references:
   megavault: /home/daniele/MegaVault/megavault.sqlite
   c2: Historical-only format reference; no runtime or lifecycle dependency.
 freshness:
-  reviewed_commit: 87de264dc18b55d99cb034339df1d0f99015ba19
+  reviewed_commit: 903b3c2d7df778e2cd35997f64ebc1e4a8e0fb2c
   watch_paths:
   - manifest.json
   - content.js
   - background.js
   - README.md
+  - read-policy.js
+  - tests
 artifacts:
   agents: AGENTS.md
   architecture: README.md
   operations: README.md
   data_model: content.js
 validation_hooks:
-- id: isolated-source-verification
-  argv:
-  - bwrap
-  - --die-with-parent
-  - --unshare-net
-  - --unshare-pid
-  - --ro-bind
-  - /
-  - /
-  - --tmpfs
-  - /home
-  - --tmpfs
-  - /run
-  - --tmpfs
-  - /tmp
-  - --tmpfs
-  - /mnt
-  - --tmpfs
-  - /media
-  - --tmpfs
-  - /var/lib
-  - --proc
-  - /proc
-  - --dev
-  - /dev
-  - --ro-bind
-  - .
-  - /tmp/work
-  - --ro-bind
-  - /home/daniele/.local/lib/python3.14/site-packages
-  - /home/daniele/.local/lib/python3.14/site-packages
-  - --chdir
-  - /tmp/work
-  - --clearenv
-  - --setenv
-  - PATH
-  - /usr/bin:/bin
-  - --setenv
-  - HOME
-  - /tmp
-  - --setenv
-  - PYTHONPATH
-  - /tmp/work:/tmp/work/src:/home/daniele/.local/lib/python3.14/site-packages
-  - --setenv
-  - PYTHONDONTWRITEBYTECODE
-  - '1'
-  - --setenv
-  - PYTEST_DISABLE_PLUGIN_AUTOLOAD
-  - '1'
-  - /bin/bash
-  - -c
-  - set -euo pipefail; node --check content.js; node --check background.js; python3
-    -B -m json.tool manifest.json > /dev/null
+- id: isolated-source-and-boundary-tests
+  argv: *id001
   cwd: .
   safe: true
 change_verification:

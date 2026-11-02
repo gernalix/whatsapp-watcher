@@ -19,6 +19,7 @@
         "https://web.whatsapp.com/*"
       ],
       "js": [
+        "read-policy.js",
         "content.js"
       ],
       "run_at": "document_idle"

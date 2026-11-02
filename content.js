@@ -3,9 +3,8 @@
 (() => {
   const STORAGE_KEY = "whatsappWatcherState";
   const PANEL_ID = "whatsapp-watcher-panel";
-  const READ_ICON_RE = /^(?:msg|status)-dblcheck-ack(?:-light)?$/i;
-  const OUTGOING_STATUS_RE = /^(?:msg|status)-(?:clock|check|dblcheck|dblcheck-ack|dblcheck-ack-light)$/i;
-  const READ_LABEL_RE = /\b(?:read|letto|letta|letti|lette|lu|lue|lus|lues|le[ií]do|le[ií]da|gelesen)\b/i;
+  const { normalizeLabel, sameLabel, fnv1a, isWhatsAppReadBlue, isReadIcon, isOutgoingStatusIcon, isReadLabel } = globalThis.WhatsAppReadPolicy;
+
 
   const DEFAULT_STATE = Object.freeze({
     armed: false,
@@ -19,26 +18,6 @@
   let panel = null;
   let scanTimer = null;
   let lastStatusText = "";
-
-  function normalizeLabel(value) {
-    return String(value || "")
-      .normalize("NFKC")
-      .replace(/\s+/g, " ")
-      .trim();
-  }
-
-  function sameLabel(a, b) {
-    return normalizeLabel(a).toLocaleLowerCase() === normalizeLabel(b).toLocaleLowerCase();
-  }
-
-  function fnv1a(text) {
-    let hash = 0x811c9dc5;
-    for (let i = 0; i < text.length; i += 1) {
-      hash ^= text.charCodeAt(i);
-      hash = Math.imul(hash, 0x01000193);
-    }
-    return (hash >>> 0).toString(16).padStart(8, "0");
-  }
 
   async function loadState() {
     try {
@@ -123,33 +102,16 @@
   }
 
   function hasOutgoingStatusIcon(root) {
-    return iconNames(root).some((name) => OUTGOING_STATUS_RE.test(name));
+    return iconNames(root).some((name) => isOutgoingStatusIcon(name));
   }
 
   function explicitReadMarker(root) {
-    if (iconNames(root).some((name) => READ_ICON_RE.test(name))) {
+    if (iconNames(root).some((name) => isReadIcon(name))) {
       return true;
     }
 
     const labelled = Array.from(root.querySelectorAll?.("[aria-label]") || []);
-    return labelled.some((element) => READ_LABEL_RE.test(normalizeLabel(element.getAttribute("aria-label"))));
-  }
-
-  function parseRgb(value) {
-    const match = String(value || "").match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
-    if (!match) {
-      return null;
-    }
-    return [Number(match[1]), Number(match[2]), Number(match[3])];
-  }
-
-  function isWhatsAppReadBlue(value) {
-    const rgb = parseRgb(value);
-    if (!rgb) {
-      return false;
-    }
-    const [red, green, blue] = rgb;
-    return red < 145 && green > 135 && blue > 175 && blue > green && green > red + 25;
+    return labelled.some((element) => isReadLabel(normalizeLabel(element.getAttribute("aria-label"))));
   }
 
   function blueDoubleCheckFallback(root) {
