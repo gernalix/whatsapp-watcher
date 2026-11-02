@@ -8,3 +8,5 @@ This Manifest V3 Chrome/Chromium extension watches the read state of the latest 
 
 ## Privacy and validation
 Do not add network requests, private WhatsApp API access, WebSocket interception, or external collection of chat/message metadata. The extension retains only the watched chat label, a message identifier/fingerprint, and read state in browser-local storage. Use `node --check` and validate the manifest JSON for source checks; do not open WhatsApp Web or a user's chat during validation. The user controls when to arm or stop watching.
+
+`read-policy.js` contains pure supplied-value classification and fingerprints; load it before the DOM adapter through the manifest. Run `node --test tests/read-policy.test.cjs` without accessing WhatsApp, Chrome profiles or notifications. Preserve marker, label and color semantics; browser/DOM acceptance remains separate.
