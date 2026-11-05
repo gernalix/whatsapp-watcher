@@ -11,6 +11,7 @@ Chrome/Chromium extension for WhatsApp Web that notifies when the latest outgoin
 - sends one desktop notification when that latest outgoing message changes from not-read to read;
 - automatically starts following a newer outgoing message if you send another one;
 - persists the selected chat and last observed message in `chrome.storage.local` across reloads;
+- uses the tab where you armed the watch as its observation source; Stop in any WhatsApp tab disarms it globally;
 - never sends WhatsApp content or metadata to any external server.
 
 ## Install on Fedora / Chrome
@@ -39,6 +40,10 @@ The canonical checkout is expected at:
 
 The panel can be collapsed with `–`.
 
+Chrome/Chromium 106 or newer is required. Reloading the producer tab preserves the watch and its notification history. After a browser restart or upgrade from the older watcher, explicitly arm the chat again. Other WhatsApp tabs can show its status or replace/stop the watch, but cannot advance its message from an older DOM.
+
+Stop and selecting a new chat invalidate pending observations immediately. A notification already handed to Chrome before Stop cannot be recalled. Persistence errors are shown rather than treated as successful controls.
+
 ## Detection strategy
 
 The extension intentionally avoids WhatsApp private JavaScript stores and WebSocket interception. It reads only the DOM WhatsApp Web already renders.
@@ -64,7 +69,9 @@ It also accepts explicit accessibility labels such as `Read` / `Letto` and, only
 
 ## Privacy
 
-No network requests are added by this extension. The only persisted values are the watched chat label, an opaque fingerprint/data-id for the current outgoing message, and its last observed read state.
+No network requests are added by this extension. Local state contains the watched chat label, an opaque fingerprint/data-id, read/dedup state and a random watch identifier. Browser-session storage binds that identifier to its producer tab/document and is cleared by a browser restart. The old unowned storage key is ignored; old content scripts cannot re-arm the new state.
+
+The in-page panel uses a private closed shadow root and accepts genuine input events for controls. This blocks programmatic page clicks; it does not claim protection against a compromised site manipulating the surrounding UI or spoofing the receipt DOM. No ordinary message-text-to-script exploit is assumed.
 
 ## Files
 

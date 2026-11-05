@@ -33,4 +33,4 @@ jobs:
           node --check content.js
           node --check read-policy.js
       - name: Verify offline read policy and packaged loading order
-        run: node --test tests/read-policy.test.cjs
+        run: node --test tests/read-policy.test.cjs tests/control-state.test.cjs
