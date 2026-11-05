@@ -118,7 +118,7 @@ commands:
     - '1'
     - /bin/bash
     - -c
-    - set -euo pipefail; node --test tests/read-policy.test.cjs; node --check read-policy.js;
+    - set -euo pipefail; node --test tests/read-policy.test.cjs tests/control-state.test.cjs; node --check read-policy.js;
       node --check content.js; node --check background.js; python3 -B -m json.tool
       manifest.json > /dev/null
     cwd: .
@@ -184,7 +184,7 @@ references:
   megavault: /home/daniele/MegaVault/megavault.sqlite
   c2: Historical-only format reference; no runtime or lifecycle dependency.
 freshness:
-  reviewed_commit: 903b3c2d7df778e2cd35997f64ebc1e4a8e0fb2c
+  reviewed_commit: 5d46849eb625f04eb7e786386a3967b8995ce120
   watch_paths:
   - manifest.json
   - content.js
