@@ -1,7 +1,9 @@
 "use strict";
 
 (() => {
-  const STORAGE_KEY = "whatsappWatcherState";
+  const STORAGE_KEY = "whatsappWatcherStateV2";
+  const PREFIX = "whatsapp-watcher-v2-";
+  const instanceId = crypto.randomUUID();
   const PANEL_ID = "whatsapp-watcher-panel";
   const { normalizeLabel, sameLabel, fnv1a, isWhatsAppReadBlue, isReadIcon, isOutgoingStatusIcon, isReadLabel } = globalThis.WhatsAppReadPolicy;
 
@@ -11,31 +13,52 @@
     chat: null,
     messageKey: null,
     lastRead: null,
-    notifiedKey: null
+    notifiedKey: null,
+    watchId: null
   });
 
   let state = { ...DEFAULT_STATE };
   let panel = null;
+  let panelRoot = null;
+  let canObserve = false;
+  let requestVersion = 0;
+  let pendingControl = 0;
   let scanTimer = null;
   let lastStatusText = "";
 
-  async function loadState() {
+  function applyResponse(result) {
+    if (!result || result.ok !== true || !result.state) throw new Error("state-unavailable");
+    state = { ...DEFAULT_STATE, ...result.state };
+    canObserve = result.canObserve === true;
+    setStatus(!state.armed ? "Disattivato"
+      : !canObserve ? `Monitoraggio attivo in un'altra scheda: ${state.chat}`
+      : state.lastRead ? `Letto: ${state.chat}` : `Monitoraggio attivo: ${state.chat}`);
+  }
+
+  async function refreshState() {
+    if (pendingControl) return;
+    const version = ++requestVersion;
     try {
-      const stored = await chrome.storage.local.get(STORAGE_KEY);
-      const value = stored && stored[STORAGE_KEY];
-      if (value && typeof value === "object") {
-        state = { ...DEFAULT_STATE, ...value };
-      }
-    } catch (error) {
-      console.warn("[whatsapp-watcher] could not load state", error);
+      const result = await chrome.runtime.sendMessage({ type: PREFIX + "state", instanceId });
+      if (version === requestVersion && !pendingControl) applyResponse(result);
+    } catch {
+      if (version === requestVersion) setStatus("Stato monitoraggio non disponibile");
     }
   }
 
-  async function saveState() {
+  async function issueControl(name, values = {}) {
+    const version = ++requestVersion;
+    pendingControl = version;
+    state = { ...DEFAULT_STATE };
+    canObserve = false;
+    setStatus(name === "stop" ? "Disattivato" : "Attivazione monitoraggio…");
     try {
-      await chrome.storage.local.set({ [STORAGE_KEY]: state });
-    } catch (error) {
-      console.warn("[whatsapp-watcher] could not save state", error);
+      const result = await chrome.runtime.sendMessage({ type: PREFIX + name, ...values });
+      if (version === requestVersion) applyResponse(result);
+    } catch {
+      if (version === requestVersion) setStatus("Impossibile salvare il controllo del monitoraggio");
+    } finally {
+      if (pendingControl === version) pendingControl = 0;
     }
   }
 
@@ -189,85 +212,26 @@
     };
   }
 
-  async function sendReadNotification() {
-    if (!state.chat || !state.messageKey || state.notifiedKey === state.messageKey) {
-      return false;
-    }
-
-    try {
-      const response = await chrome.runtime.sendMessage({
-        type: "whatsapp-watcher-read",
-        chat: state.chat,
-        messageKey: state.messageKey
-      });
-      if (response && response.ok === false) {
-        setStatus(`Errore notifica: ${response.error || "sconosciuto"}`);
-        return false;
-      }
-      state.notifiedKey = state.messageKey;
-      state.lastRead = true;
-      await saveState();
-      setStatus(`Letto: ${state.chat}`);
-      return true;
-    } catch (error) {
-      console.warn("[whatsapp-watcher] notification failed", error);
-      setStatus("Errore nell'invio della notifica desktop");
-      return false;
-    }
-  }
-
-  async function handleObservation(observation) {
-    if (!observation) {
-      setStatus(state.armed ? `In attesa: ${state.chat}` : "Disattivato");
-      return;
-    }
-
-    if (observation.source === "chat" && observation.key && observation.key !== state.messageKey) {
-      const hadPreviousMessage = Boolean(state.messageKey);
-      state.messageKey = observation.key;
-      state.lastRead = observation.read;
-      state.notifiedKey = null;
-      await saveState();
-
-      if (hadPreviousMessage && observation.read) {
-        await sendReadNotification();
-        return;
-      }
-
-      setStatus(observation.read ? `Ultimo messaggio già letto: ${state.chat}` : `Monitoraggio attivo: ${state.chat}`);
-      return;
-    }
-
-    if (!state.messageKey && observation.key) {
-      state.messageKey = observation.key;
-      state.lastRead = observation.read;
-      state.notifiedKey = null;
-      await saveState();
-      setStatus(observation.read ? `Ultimo messaggio già letto: ${state.chat}` : `Monitoraggio attivo: ${state.chat}`);
-      return;
-    }
-
-    if (state.lastRead === false && observation.read === true && state.notifiedKey !== state.messageKey) {
-      await sendReadNotification();
-      return;
-    }
-
-    if (state.lastRead !== observation.read) {
-      state.lastRead = observation.read;
-      await saveState();
-    }
-
-    setStatus(observation.read ? `Letto: ${state.chat}` : `Monitoraggio attivo: ${state.chat}`);
-  }
-
   async function scan() {
     if (!state.armed) {
       setStatus("Disattivato");
       return;
     }
-
+    if (!canObserve || pendingControl) return;
     const observation = mainObservation() || sidebarObservation();
-    await handleObservation(observation);
+    if (!observation) {
+      setStatus(`In attesa: ${state.chat}`);
+      return;
+    }
+    const version = ++requestVersion;
+    try {
+      const result = await chrome.runtime.sendMessage({
+        type: PREFIX + "observe", watchId: state.watchId, chat: state.chat, observation
+      });
+      if (version === requestVersion && !pendingControl && !result?.ignored) applyResponse(result);
+    } catch {
+      if (version === requestVersion) setStatus("Errore nell'osservazione del monitoraggio");
+    }
   }
 
   function scheduleScan(delay = 120) {
@@ -285,8 +249,8 @@
     if (!panel) {
       return;
     }
-    const status = panel.shadowRoot?.querySelector("#status");
-    const target = panel.shadowRoot?.querySelector("#target");
+    const status = panelRoot?.querySelector("#status");
+    const target = panelRoot?.querySelector("#target");
     if (status) {
       status.textContent = text;
     }
@@ -301,35 +265,19 @@
       setStatus("Apri prima la chat da monitorare");
       return;
     }
-
     const message = latestOutgoingMessage();
-    state = {
-      armed: true,
-      chat,
-      messageKey: message ? messageKey(message) : null,
-      lastRead: message ? isRead(message) : null,
-      notifiedKey: null
-    };
-    await saveState();
-    setStatus(
-      message
-        ? state.lastRead
-          ? `Ultimo messaggio già letto: ${chat}`
-          : `Monitoraggio attivo: ${chat}`
-        : `In attesa di un tuo messaggio: ${chat}`
-    );
-    scheduleScan(0);
+    await issueControl("arm", { chat, key: message ? messageKey(message) : null,
+      read: message ? isRead(message) : null });
+    if (state.armed && canObserve) scheduleScan(0);
   }
 
   async function stopWatching() {
-    state = { ...DEFAULT_STATE };
-    await saveState();
-    setStatus("Disattivato");
+    await issueControl("stop");
   }
 
   function ensurePanel() {
-    if (document.getElementById(PANEL_ID)) {
-      panel = document.getElementById(PANEL_ID);
+    if (panel && panelRoot) {
+      if (!panel.isConnected) document.body.appendChild(panel);
       return;
     }
 
@@ -340,7 +288,8 @@
     panel.style.bottom = "14px";
     panel.style.zIndex = "2147483647";
 
-    const shadow = panel.attachShadow({ mode: "open" });
+    const shadow = panel.attachShadow({ mode: "closed" });
+    panelRoot = shadow;
     shadow.innerHTML = `
       <style>
         :host { all: initial; }
@@ -394,9 +343,14 @@
       </div>
     `;
 
-    shadow.querySelector("#watch")?.addEventListener("click", () => void watchCurrentChat());
-    shadow.querySelector("#stop")?.addEventListener("click", () => void stopWatching());
-    shadow.querySelector("#collapse")?.addEventListener("click", () => {
+    shadow.querySelector("#watch")?.addEventListener("click", (event) => {
+      if (event.isTrusted === true) void watchCurrentChat();
+    });
+    shadow.querySelector("#stop")?.addEventListener("click", (event) => {
+      if (event.isTrusted === true) void stopWatching();
+    });
+    shadow.querySelector("#collapse")?.addEventListener("click", (event) => {
+      if (event.isTrusted !== true) return;
       const box = shadow.querySelector(".box");
       box?.classList.toggle("collapsed");
       const collapsed = box?.classList.contains("collapsed");
@@ -412,7 +366,7 @@
   }
 
   async function init() {
-    await loadState();
+    await refreshState();
     ensurePanel();
 
     const observer = new MutationObserver(() => scheduleScan());
@@ -428,6 +382,16 @@
     window.setInterval(() => scheduleScan(0), 2000);
     scheduleScan(0);
   }
+
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message?.type === PREFIX + "document" && sender.id === chrome.runtime.id) {
+      sendResponse({ instanceId });
+    }
+    return false;
+  });
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === "local" && changes[STORAGE_KEY]) void refreshState();
+  });
 
   void init();
 })();
